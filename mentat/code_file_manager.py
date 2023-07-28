@@ -163,6 +163,7 @@ class CodeFileManager:
         paths: Iterable[str],
         user_input_manager: UserInputManager,
         config: ConfigManager,
+        ignore: Iterable[str],
     ):
         # Make sure to apply user config last
         for file_type in default_filetype_include_list:
@@ -210,40 +211,43 @@ class CodeFileManager:
 
         for path in paths:
             path = Path(path)
-            if path.is_file():
-                path_set.add(os.path.realpath(path))
-            elif path.is_dir():
-                nonignored_files = set(
-                    filter(
-                        lambda p: p != "",
-                        subprocess.check_output(
-                            # -c shows cached (regular) files, -o shows other (untracked/ new) files
-                            ["git", "ls-files", "-c", "-o", "--exclude-standard"],
-                            cwd=path,
-                            text=True,
-                        ).split("\n"),
+            if path not in self.ignore:
+                if path.is_file():
+                    path_set.add(os.path.realpath(path))
+                elif path.is_dir():
+                    nonignored_files = set(
+                        filter(
+                            lambda p: p != "",
+                            subprocess.check_output(
+                                # -c shows cached (regular) files, -o shows other (untracked/ new) files
+                                ["git", "ls-files", "-c", "-o", "--exclude-standard"],
+                                cwd=path,
+                                text=True,
+                            ).split("\n"),
+                        )
                     )
-                )
-                non_text_files = filter(
-                    lambda f: not _is_file_text(
-                        os.path.realpath(os.path.join(path, f))
-                    ),
-                    nonignored_files,
-                )
-                self.non_text_file_paths.extend(
-                    map(
-                        lambda f: os.path.realpath(os.path.join(path, f)),
-                        non_text_files,
-                    )
-                )
-                text_files = filter(
-                    _is_file_text,
-                    map(
-                        lambda f: os.path.realpath(os.path.join(path, f)),
+                    non_text_files = filter(
+                        lambda f: not _is_file_text(
+                            os.path.realpath(os.path.join(path, f))
+                        ),
                         nonignored_files,
-                    ),
-                )
-                path_set.update(text_files)
+                    )
+                    self.non_text_file_paths.extend(
+                        map(
+                            lambda f: os.path.realpath(os.path.join(path, f)),
+                            non_text_files,
+                        )
+                    )
+                    text_files = filter(
+                        _is_file_text,
+                        map(
+                            lambda f: os.path.realpath(os.path.join(path, f)),
+                            nonignored_files,
+                        ),
+                    )
+                    path_set.update(text_files)
+            else:
+                logging.info(f"Ignoring path {path}")
         self.file_paths = list(path_set)
 
     def _read_file(self, abs_path) -> Iterable[str]:

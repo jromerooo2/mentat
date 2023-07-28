@@ -20,30 +20,33 @@ def run_cli():
         description="Run conversation with command line args"
     )
     parser.add_argument("paths", nargs="*", help="Paths to directories or files")
-    paths = parser.parse_args().paths
-    run(paths)
+    parser.add_argument("-ignore", nargs="*", help="Text file with paths to ignore")
+    args = parser.parse_args()
+    print(args.paths)
+    run(args.paths, args.ignore)
 
 
-def run(paths: Iterable[str]):
+def run(paths: Iterable[str], ignore: os.path.abspath | None = None):
     os.makedirs(mentat_dir_path, exist_ok=True)
+    ignore_list =  read_file_as_list(ignore)
     setup_logging()
     setup_api_key()
-    logging.debug(f"Paths: {paths}")
+    logging.debug(f"Paths: {paths}, Ignore: {ignore}")
 
     cost_tracker = CostTracker()
     try:
-        loop(paths, cost_tracker)
+        loop(paths, cost_tracker, ignore_list)
     except (EOFError, KeyboardInterrupt) as e:
         print(e)
     finally:
         cost_tracker.display_total_cost()
 
 
-def loop(paths: Iterable[str], cost_tracker: CostTracker) -> None:
+def loop(paths: Iterable[str], cost_tracker: CostTracker, ignore: list) -> None:
     config = ConfigManager()
     conv = Conversation(config, cost_tracker)
     user_input_manager = UserInputManager(config)
-    code_file_manager = CodeFileManager(paths, user_input_manager, config)
+    code_file_manager = CodeFileManager(paths, user_input_manager, config, ignore)
 
     tokens = count_tokens(code_file_manager.get_code_message())
     cprint(f"\nFile token count: {tokens}", "cyan")
@@ -167,3 +170,13 @@ def user_filter_changes(
             new_changes.append(change)
             indices.append(index)
     return new_changes, indices
+
+def read_file_as_list(file_path):
+    try:
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+            #defaults to a list
+            return lines
+    except FileNotFoundError:
+        print(f"File not found: {file_path}")
+        return []
